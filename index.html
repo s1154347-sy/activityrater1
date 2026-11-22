@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>参与程度打分器 · Công cụ chấm điểm</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Be Vietnam Pro", sans-serif;
+    background: #f4f5f7; color: #222; line-height: 1.6;
+  }
+  header {
+    background: #2b3a55; color: #fff; padding: 8px 16px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header .field { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  header input[type=text] {
+    padding: 4px 8px; border: none; border-radius: 4px; font-size: 13px; width: 110px;
+  }
+  .langBtn {
+    background: transparent; color: #cbd5e0; border: 1px solid #718096;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-left: auto;
+  }
+  .langBtn.active { background: #fff; color: #2b3a55; border-color: #fff; font-weight: 700; }
+  main { max-width: 1100px; margin: 12px auto; padding: 0 14px; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+  .card {
+    background: #fff; border-radius: 10px; padding: 16px 22px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 12px;
+  }
+  .card h2 { font-size: 16px; margin-bottom: 10px; color: #2b3a55; }
+  .card p, .card li { font-size: 14px; margin-bottom: 6px; }
+  .card ul, .card ol { padding-left: 22px; }
+  .btn {
+    display: inline-block; background: #2b6cb0; color: #fff; border: none;
+    padding: 8px 20px; font-size: 14px; border-radius: 6px; cursor: pointer;
+    margin: 6px 8px 0 0;
+  }
+  .btn:hover { background: #245a94; }
+  .btn.secondary { background: #718096; }
+  .btn:disabled { background: #b8c0cc; cursor: not-allowed; }
+  .hidden { display: none !important; }
+
+  /* 打分区：固定尺寸，保证一屏可见 */
+  #rateArea { display: flex; gap: 16px; align-items: stretch; }
+  #mediaBox {
+    flex: 1; min-width: 0; background: #000; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; height: 360px;
+  }
+  #mediaBox video, #demoCanvas {
+    max-width: 100%; max-height: 360px; width: auto; height: auto;
+    border-radius: 8px; display: block; object-fit: contain;
+  }
+  #sliderBox { width: 110px; display: flex; flex-direction: column; align-items: center; }
+  #sliderTrack {
+    width: 56px; height: 240px; position: relative; border-radius: 8px;
+    background: linear-gradient(to bottom, #2b6cb0 0%, #90c2f0 48%, #e2e8f0 50%, #f0b8a0 52%, #c05621 100%);
+    cursor: pointer; touch-action: none; user-select: none;
+    border: 1px solid #cbd5e0;
+  }
+  #sliderThumb {
+    position: absolute; left: -12px; width: 80px; height: 10px; border-radius: 5px;
+    background: #1a202c; box-shadow: 0 1px 3px rgba(0,0,0,.4);
+    transform: translateY(-50%); pointer-events: none;
+  }
+  #sliderLabel { font-size: 22px; font-weight: 700; margin-top: 6px; min-height: 32px; }
+  #sliderHint { font-size: 12px; color: #666; text-align: center; margin-top: 2px; }
+  .anchor { font-size: 12px; color: #444; text-align: center; margin: 2px 0; }
+  #controlsBar { margin-top: 8px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  #timeLabel { font-size: 14px; font-variant-numeric: tabular-nums; }
+  #graphCanvas {
+    width: 100%; height: 110px; background: #fff; border-radius: 8px;
+    border: 1px solid #cbd5e0; margin-top: 10px;
+  }
+  .warn { color: #c05621; font-weight: 600; }
+  .status { font-size: 13px; color: #2b6cb0; margin-top: 6px; }
+  kbd {
+    background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px;
+    padding: 1px 6px; font-size: 12px; font-family: inherit;
+  }
+  @media (max-width: 720px) {
+    #rateArea { flex-direction: column; }
+    #mediaBox { height: auto; min-height: 180px; }
+    #mediaBox video, #demoCanvas { max-height: 200px; }
+    #sliderBox { width: 100%; flex-direction: row; justify-content: center; gap: 12px; }
+    #sliderTrack { height: 180px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 data-i18n="appTitle">参与程度打分器</h1>
+  <div class="field"><span data-i18n="pidLabel">被试编号：</span><input type="text" id="pid" placeholder="VN03"></div>
+  <div class="field"><span data-i18n="sidLabel">片段编号：</span><input type="text" id="sid" placeholder="clip1"></div>
+  <button class="langBtn active" id="btnZh">中文</button>
+  <button class="langBtn" id="btnVi">Tiếng Việt</button>
+</header>
+
+<main>
+  <!-- ============ 说明屏 ============ -->
+  <div id="scrIntro" class="screen active">
+    <div class="card">
+      <h2 data-i18n="introH">说明</h2>
+      <p data-i18n="introP1"></p>
+      <ul>
+        <li data-i18n="anchorPlus"></li>
+        <li data-i18n="anchorZero"></li>
+        <li data-i18n="anchorMinus"></li>
+      </ul>
+      <p data-i18n="rulesH"></p>
+      <ol>
+        <li data-i18n="rule1"></li>
+        <li data-i18n="rule2"></li>
+        <li data-i18n="rule3"></li>
+        <li data-i18n="rule4"></li>
+      </ol>
+      <p class="warn" data-i18n="warnClose"></p>
+    </div>
+    <div class="card">
+      <h2 data-i18n="step1H"></h2>
+      <p data-i18n="step1P"></p>
+      <input type="file" id="videoFile" accept="video/*">
+      <p style="margin-top:10px;" data-i18n="step1Demo"></p>
+      <button class="btn secondary" id="btnDemo" data-i18n="btnDemo"></button>
+      <p class="status" id="introStatus"></p>
+    </div>
+  </div>
+
+  <!-- ============ 打分屏 ============ -->
+  <div id="scrRate" class="screen">
+    <div class="card">
+      <div id="rateArea">
+        <div id="mediaBox">
+          <video id="vid" playsinline></video>
+          <canvas id="demoCanvas" width="960" height="540" class="hidden"></canvas>
+        </div>
+        <div id="sliderBox">
+          <div class="anchor" data-i18n="sliderTop"></div>
+          <div id="sliderTrack"><div id="sliderThumb"></div></div>
+          <div class="anchor" data-i18n="sliderBottom"></div>
+          <div id="sliderLabel">0</div>
+          <div id="sliderHint" data-i18n="sliderHint"></div>
+        </div>
+      </div>
+      <div id="controlsBar">
+        <button class="btn" id="btnPlay" data-i18n="btnStart"></button>
+        <span id="timeLabel">00:00 / 00:00</span>
+        <span class="status" id="rateStatus"></span>
+      </div>
+      <canvas id="graphCanvas" width="1100" height="300"></canvas>
+    </div>
+  </div>
+
+  <!-- ============ 完成屏 ============ -->
+  <div id="scrDone" class="screen">
+    <div class="card">
+      <h2 data-i18n="doneH"></h2>
+      <p data-i18n="doneP"></p>
+      <canvas id="finalGraph" width="1100" height="300" style="width:100%; height:150px; background:#fff; border:1px solid #cbd5e0; border-radius:8px; margin:8px 0;"></canvas>
+      <div>
+        <button class="btn" id="btnCsv" data-i18n="btnCsv"></button>
+        <button class="btn" id="btnPng" data-i18n="btnPng"></button>
+        <button class="btn secondary" id="btnAgain" data-i18n="btnAgain"></button>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  // ---------- 中越双语 ----------
+  const I18N = {
+    zh: {
+      appTitle: '参与程度打分器',
+      pidLabel: '被试编号：', sidLabel: '片段编号：',
+      introH: '说明',
+      introP1: '接下来你会边看一段录像，边用右边的滑块给<strong>每一秒</strong>自己的感受打分。打分的维度是<strong>兴趣和愉悦</strong>（interested + enjoying）：',
+      anchorPlus: '<strong>+10</strong> = 非常感兴趣 / 非常享受',
+      anchorZero: '<strong>0</strong> = 既不高也不低（一般、无所谓）',
+      anchorMinus: '<strong>−10</strong> = 非常无聊 / 厌烦 / 不舒服',
+      rulesH: '规则（和重要）：',
+      rule1: '请根据看录像时<strong>回忆起来的当时感受</strong>打分，想到什么就拖到哪个位置。',
+      rule2: '录像<strong>不能回退</strong>，只能往前放（可以暂停）。',
+      rule3: '可以用鼠标/手指拖动滑块，也可以用键盘 <kbd>↑</kbd> <kbd>↓</kbd> 微调，按 <kbd>空格</kbd> 暂停/继续。',
+      rule4: '打完后点「导出数据」，把生成的文件发回给研究者。',
+      warnClose: '打分过程中请勿关闭或刷新本页面，否则已打的分会丢失。',
+      step1H: '第一步：选择录像',
+      step1P: '请选择研究者发给你的录像文件（手机或电脑里的视频文件都可以）：',
+      step1Demo: '没有录像文件？可以先用<strong>练习模式</strong>（60 秒模拟画面）熟悉操作：',
+      btnDemo: '进入练习模式',
+      sliderTop: '+10<br>很感兴趣<br>很享受', sliderBottom: '−10<br>很无聊<br>很厌烦',
+      sliderHint: '拖动打分<br>↑↓ 微调',
+      btnStart: '开始', btnPause: '暂停', btnResume: '继续', btnDone: '已完成',
+      statusNoRewind: '录像不能回退，只能往前播放。',
+      doneH: '打分完成',
+      doneP: '你的曲线如下。请点击下面两个按钮，把生成的 <strong>CSV 数据文件</strong> 和 <strong>曲线图片</strong> 发回给研究者（微信里请以「文件」形式发送，不要以图片/相册形式发送 CSV）。',
+      btnCsv: '导出 CSV 数据', btnPng: '导出曲线图片', btnAgain: '重新打分（会清空数据）',
+      confirmAgain: '确定要清空已打的分并重新开始吗？'
+    },
+    vi: {
+      appTitle: 'Công cụ chấm điểm cảm xúc',
+      pidLabel: 'Mã người tham gia: ', sidLabel: 'Mã đoạn video: ',
+      introH: 'Hướng dẫn',
+      introP1: 'Tiếp theo, bạn sẽ xem một đoạn video và dùng thanh trượt bên phải để chấm điểm cảm xúc của mình cho <strong>từng giây</strong>. Tiêu chí chấm điểm là <strong>sự hứng thú và cảm giác thích thú</strong> (interested + enjoying):',
+      anchorPlus: '<strong>+10</strong> = Rất hứng thú / Rất thích thú',
+      anchorZero: '<strong>0</strong> = Không cao cũng không thấp (bình thường, không cảm xúc đặc biệt)',
+      anchorMinus: '<strong>−10</strong> = Rất buồn chán / khó chịu',
+      rulesH: 'Quy tắc (quan trọng):',
+      rule1: 'Hãy chấm điểm theo cảm xúc mà bạn nhớ lại được trong lúc xem video — cảm thấy thế nào thì kéo thanh trượt tới vị trí đó.',
+      rule2: 'Video <strong>không thể tua lùi</strong>, chỉ có thể phát tiến (có thể tạm dừng).',
+      rule3: 'Bạn có thể kéo thanh trượt bằng chuột hoặc ngón tay, dùng phím <kbd>↑</kbd> <kbd>↓</kbd> để điều chỉnh nhỏ, phím <kbd>Space</kbd> để tạm dừng/tiếp tục.',
+      rule4: 'Sau khi hoàn thành, nhấn «Xuất dữ liệu» và gửi các tập tin tạo ra cho nhà nghiên cứu.',
+      warnClose: 'Trong lúc chấm điểm, vui lòng không đóng hoặc tải lại trang này — điểm đã chấm sẽ bị mất.',
+      step1H: 'Bước 1: Chọn video',
+      step1P: 'Vui lòng chọn tập tin video mà nhà nghiên cứu đã gửi cho bạn (video lưu trên điện thoại hoặc máy tính đều được):',
+      step1Demo: 'Chưa có video? Bạn có thể làm quen thao tác qua <strong>chế độ luyện tập</strong> (màn hình mô phỏng 60 giây):',
+      btnDemo: 'Vào chế độ luyện tập',
+      sliderTop: '+10<br>Rất hứng thú<br>Rất thích thú', sliderBottom: '−10<br>Rất buồn chán<br>Rất khó chịu',
+      sliderHint: 'Kéo để chấm điểm<br>↑↓ điều chỉnh',
+      btnStart: 'Bắt đầu', btnPause: 'Tạm dừng', btnResume: 'Tiếp tục', btnDone: 'Đã hoàn thành',
+      statusNoRewind: 'Video không thể tua lùi, chỉ có thể phát tiến.',
+      doneH: 'Hoàn thành chấm điểm',
+      doneP: 'Đường cong cảm xúc của bạn như bên dưới. Vui lòng nhấn hai nút dưới đây để xuất <strong>tập tin CSV</strong> và <strong>hình ảnh đường cong</strong>, rồi gửi lại cho nhà nghiên cứu (trong WeChat, hãy gửi dưới dạng «Tập tin/File», không gửi dạng ảnh/album).',
+      btnCsv: 'Xuất dữ liệu CSV', btnPng: 'Xuất hình ảnh đường cong', btnAgain: 'Chấm lại từ đầu (xóa dữ liệu)',
+      confirmAgain: 'Bạn có chắc muốn xóa điểm đã chấm và bắt đầu lại không?'
+    }
+  };
+  let lang = 'zh';
+  const T = () => I18N[lang];
+  function applyLang(l) {
+    lang = l;
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const k = el.getAttribute('data-i18n');
+      if (T()[k] !== undefined) el.innerHTML = T()[k];
+    });
+    $('btnZh').classList.toggle('active', l === 'zh');
+    $('btnVi').classList.toggle('active', l === 'vi');
+    // 同步按钮当前状态
+    if (screens.rate.classList.contains('active')) {
+      if (finished) btnPlay.textContent = T().btnDone;
+      else btnPlay.textContent = media.isPlaying() ? T().btnPause : (raw.length > 0 ? T().btnResume : T().btnStart);
+    }
+  }
+  $('btnZh').addEventListener('click', () => applyLang('zh'));
+  $('btnVi').addEventListener('click', () => applyLang('vi'));
+
+  // ---------- DOM ----------
+  const screens = { intro: $('scrIntro'), rate: $('scrRate'), done: $('scrDone') };
+  const vid = $('vid'), demoCanvas = $('demoCanvas');
+  const sliderTrack = $('sliderTrack'), sliderThumb = $('sliderThumb'), sliderLabel = $('sliderLabel');
+  const graphCanvas = $('graphCanvas'), finalGraph = $('finalGraph');
+  const btnPlay = $('btnPlay'), timeLabel = $('timeLabel'), rateStatus = $('rateStatus');
+
+  // ---------- 状态 ----------
+  let mode = null;
+  let duration = 0;
+  let value = 0;
+  let raw = [];
+  let perSecond = [];
+  let lastSampledSec = -1;
+  let finished = false;
+  let exported = false;
+  let clockRAF = null, sampleTimer = null, demoPlaying = false, demoTime = 0, demoStartStamp = 0;
+
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const fmt = s => {
+    s = Math.max(0, Math.round(s));
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  };
+
+  function show(name) {
+    Object.values(screens).forEach(el => el.classList.remove('active'));
+    screens[name].classList.add('active');
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- 滑块 ----------
+  function setValue(v) {
+    value = clamp(Math.round(v), -10, 10);
+    const h = sliderTrack.clientHeight;
+    const y = (10 - value) / 20 * h;
+    sliderThumb.style.top = y + 'px';
+    sliderLabel.textContent = (value > 0 ? '+' : '') + value;
+    sliderLabel.style.color = value > 0 ? '#2b6cb0' : (value < 0 ? '#c05621' : '#4a5568');
+  }
+  function pointerToValue(clientY) {
+    const r = sliderTrack.getBoundingClientRect();
+    const frac = clamp((clientY - r.top) / r.height, 0, 1);
+    return 10 - frac * 20;
+  }
+  let dragging = false;
+  sliderTrack.addEventListener('pointerdown', e => {
+    dragging = true; sliderTrack.setPointerCapture(e.pointerId); setValue(pointerToValue(e.clientY));
+  });
+  sliderTrack.addEventListener('pointermove', e => { if (dragging) setValue(pointerToValue(e.clientY)); });
+  sliderTrack.addEventListener('pointerup', () => dragging = false);
+  sliderTrack.addEventListener('pointercancel', () => dragging = false);
+  window.addEventListener('keydown', e => {
+    if (!screens.rate.classList.contains('active') || finished) return;
+    if (e.key === 'ArrowUp')   { setValue(value + 1); e.preventDefault(); }
+    if (e.key === 'ArrowDown') { setValue(value - 1); e.preventDefault(); }
+    if (e.key === ' ')         { togglePlay(); e.preventDefault(); }
+  });
+  setValue(0);
+
+  // ---------- 媒体适配 ----------
+  const media = {
+    getTime()  { return mode === 'demo' ? demoTime : vid.currentTime; },
+    isPlaying(){ return mode === 'demo' ? demoPlaying : !vid.paused && !vid.ended; },
+    play()     { if (mode === 'demo') { demoPlaying = true; demoStartStamp = performance.now() - demoTime * 1000; tickDemo(); } else vid.play(); },
+    pause()    { if (mode === 'demo') { demoPlaying = false; if (clockRAF) cancelAnimationFrame(clockRAF); } else vid.pause(); }
+  };
+
+  function tickDemo() {
+    if (!demoPlaying) return;
+    demoTime = (performance.now() - demoStartStamp) / 1000;
+    drawDemo();
+    if (demoTime >= duration) { demoTime = duration; demoPlaying = false; onEnded(); return; }
+    clockRAF = requestAnimationFrame(tickDemo);
+  }
+  function drawDemo() {
+    const ctx = demoCanvas.getContext('2d');
+    const w = demoCanvas.width, h = demoCanvas.height;
+    ctx.fillStyle = '#111'; ctx.fillRect(0, 0, w, h);
+    const speed = 60;
+    ctx.font = '26px sans-serif';
+    for (let i = 0; i < 3; i++) {
+      const y = h - ((demoTime * speed + i * 220) % (h + 220)) + 110;
+      ctx.fillStyle = '#2d3748'; ctx.fillRect(60, y - 40, w - 120, 170);
+      ctx.fillStyle = '#a0aec0';
+      ctx.fillText('Màn hình mô phỏng: giả vờ bạn đang lướt mạng xã hội tiếng Trung ' + (i + 1), 90, y + 10);
+    }
+    ctx.fillStyle = '#f6e05e';
+    ctx.font = '20px sans-serif';
+    ctx.fillText('Chế độ luyện tập · ' + fmt(demoTime) + ' / ' + fmt(duration), 20, 34);
+  }
+
+  // ---------- 开始 ----------
+  $('btnDemo').addEventListener('click', () => start('demo'));
+  $('videoFile').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    vid.src = URL.createObjectURL(f);
+    vid.addEventListener('loadedmetadata', function once() {
+      vid.removeEventListener('loadedmetadata', once);
+      start('video');
+    });
+  });
+
+  function start(m) {
+    mode = m;
+    raw = []; perSecond = []; lastSampledSec = -1; finished = false; exported = false; demoTime = 0;
+    if (m === 'demo') { duration = 60; vid.classList.add('hidden'); demoCanvas.classList.remove('hidden'); drawDemo(); }
+    else { duration = vid.duration; demoCanvas.classList.add('hidden'); vid.classList.remove('hidden'); }
+    show('rate');
+    setValue(0);
+    timeLabel.textContent = '00:00 / ' + fmt(duration);
+    btnPlay.textContent = T().btnStart;
+    rateStatus.textContent = '';
+    drawGraph(graphCanvas);
+    clearInterval(sampleTimer);
+    sampleTimer = setInterval(() => {
+      if (finished || !media.isPlaying()) return;
+      const t = media.getTime();
+      raw.push({ t, v: value });
+      const sec = Math.floor(t);
+      if (sec !== lastSampledSec) {
+        for (let s = Math.max(0, lastSampledSec + 1); s <= sec && s < Math.ceil(duration); s++) perSecond[s] = value;
+        lastSampledSec = sec;
+      } else {
+        perSecond[sec] = value;
+      }
+      timeLabel.textContent = fmt(t) + ' / ' + fmt(duration);
+      drawGraph(graphCanvas);
+    }, 200);
+  }
+
+  vid.addEventListener('seeking', () => {
+    if (finished) return;
+    const played = Math.max(0, lastSampledSec);
+    if (vid.currentTime < played - 0.05 && !vid.paused) {
+      vid.currentTime = played;
+      rateStatus.textContent = T().statusNoRewind;
+    }
+  });
+
+  function togglePlay() {
+    if (finished) return;
+    media.isPlaying() ? media.pause() : media.play();
+    btnPlay.textContent = media.isPlaying() ? T().btnPause : T().btnResume;
+  }
+  btnPlay.addEventListener('click', togglePlay);
+  vid.addEventListener('ended', onEnded);
+
+  function onEnded() {
+    if (finished) return;
+    finished = true;
+    btnPlay.textContent = T().btnDone;
+    for (let s = Math.max(0, lastSampledSec + 1); s < Math.floor(duration); s++) perSecond[s] = value;
+    drawGraph(finalGraph);
+    show('done');
+  }
+
+  // ---------- 曲线 ----------
+  function drawGraph(canvas) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height, padL = 46, padR = 16, padT = 14, padB = 26;
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+    const n = Math.max(Math.ceil(duration), 1);
+    const x = s => padL + (W - padL - padR) * (s / n);
+    const y = v => padT + (H - padT - padB) * (1 - (v + 10) / 20);
+    ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let v = -10; v <= 10; v += 5) { ctx.moveTo(padL, y(v)); ctx.lineTo(W - padR, y(v)); }
+    ctx.stroke();
+    ctx.strokeStyle = '#4a5568'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(padL, y(0)); ctx.lineTo(W - padR, y(0)); ctx.stroke();
+    ctx.fillStyle = '#4a5568'; ctx.font = '17px sans-serif'; ctx.textAlign = 'right';
+    [-10, -5, 0, 5, 10].forEach(v => ctx.fillText((v > 0 ? '+' : '') + v, padL - 6, y(v) + 6));
+    ctx.textAlign = 'center';
+    const step = Math.ceil(n / 10);
+    for (let s = 0; s <= n; s += step) ctx.fillText(fmt(s), x(s), H - 8);
+    ctx.strokeStyle = '#2b6cb0'; ctx.lineWidth = 2.5; ctx.beginPath();
+    let started = false;
+    for (let s = 0; s < perSecond.length; s++) {
+      if (perSecond[s] === null || perSecond[s] === undefined) continue;
+      if (!started) { ctx.moveTo(x(s), y(perSecond[s])); started = true; }
+      else ctx.lineTo(x(s), y(perSecond[s]));
+    }
+    ctx.stroke();
+    if (!finished && media.isPlaying()) {
+      const t = media.getTime();
+      ctx.strokeStyle = '#c05621'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x(t), padT); ctx.lineTo(x(t), H - padB); ctx.stroke();
+    }
+  }
+
+  // ---------- 导出 ----------
+  function fileStamp() {
+    const pid = ($('pid').value || 'ID').trim(), sid = ($('sid').value || 'clip').trim();
+    return pid + '_' + sid;
+  }
+  $('btnCsv').addEventListener('click', () => {
+    let csv = 'second,rating\n';
+    for (let s = 0; s < Math.ceil(duration); s++) {
+      const v = perSecond[s];
+      csv += s + ',' + (v === null || v === undefined ? '' : v) + '\n';
+    }
+    csv += '\n# raw samples (5Hz)\ntime_sec,rating\n';
+    raw.forEach(r => csv += r.t.toFixed(2) + ',' + r.v + '\n');
+    download(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), fileStamp() + '_rating.csv');
+    exported = true;
+  });
+  $('btnPng').addEventListener('click', () => {
+    finalGraph.toBlob(b => download(b, fileStamp() + '_graph.png'), 'image/png');
+    exported = true;
+  });
+  function download(blob, name) {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  }
+  $('btnAgain').addEventListener('click', () => {
+    if (!confirm(T().confirmAgain)) return;
+    show('intro');
+  });
+
+  window.addEventListener('beforeunload', e => {
+    if ((raw.length > 0 && !finished) || (finished && !exported)) {
+      e.preventDefault(); e.returnValue = '';
+    }
+  });
+
+  applyLang('zh');
+})();
+</script>
+</body>
+</html>
